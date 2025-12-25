@@ -1,2 +1,15 @@
+# 依賴與輸出
+node_modules/
+dist/
+coverage/
+*.log
+*.tmp
+*.tsbuildinfo
+
+# 環境設定
+.env
+.DS_Store
+
+# 開發文件（不納入版控）
 .md/
 .github/

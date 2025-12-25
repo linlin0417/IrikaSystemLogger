@@ -133,9 +133,10 @@ export class FileTransport implements Transport {
       const content = this.buffer.join("");
       this.buffer = [];
       this.bufferBytes = 0;
-      if (this.stream && typeof this.stream.fd === "number") {
+      const fd = this.stream ? (this.stream as unknown as { fd?: number }).fd : undefined;
+      if (typeof fd === "number") {
         try {
-          fs.writeSync(this.stream.fd, content, undefined, "utf8");
+          fs.writeSync(fd, content, undefined, "utf8");
         } catch (err) {
           // ignore sync write failures on exit
         }

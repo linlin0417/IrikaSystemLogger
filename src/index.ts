@@ -1,3 +1,5 @@
-export { createLogger, IrikaLogger, LoggerInitOptions } from "./logger";
-export { LogLevel, LogRecord } from "./types";
-export { createLogStream, LogFilterOptions } from "./reader";
+export { createLogger, IrikaLogger } from "./logger";
+export type { LoggerInitOptions } from "./logger";
+export type { LogLevel, LogRecord } from "./types";
+export { createLogStream } from "./reader";
+export type { LogFilterOptions } from "./reader";

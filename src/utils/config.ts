@@ -69,13 +69,14 @@ export function resolveOptions(user: BaseLoggerOptions): ResolvedLoggerOptions {
   const tz = normalizeTimeZone(merged.timezone ?? DEFAULTS.timezone);
   const candidateLevel = (merged.level ?? DEFAULTS.level).toUpperCase() as keyof typeof levelPriority;
   const level = levelPriority[candidateLevel] ? candidateLevel : DEFAULTS.level;
+  const pidMode = (merged.pidMode ?? DEFAULTS.pidMode) as "independent" | "ipc_master";
   return {
     app: merged.app,
     version: merged.version,
     logDir: merged.logDir ?? DEFAULTS.logDir,
     level,
     timezone: tz,
-    pidMode: merged.pidMode ?? DEFAULTS.pidMode,
+    pidMode,
     maxFileSizeBytes: merged.maxFileSizeBytes ?? DEFAULTS.maxFileSizeBytes,
     maxTotalSizeBytes: merged.maxTotalSizeBytes ?? DEFAULTS.maxTotalSizeBytes,
     maxFiles: merged.maxFiles ?? DEFAULTS.maxFiles,
