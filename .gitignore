@@ -6,6 +6,7 @@ UTest/
 *.log
 *.tmp
 *.tsbuildinfo
+編譯並發布.bat
 
 # 環境設定
 .env

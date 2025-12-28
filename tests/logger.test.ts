@@ -63,3 +63,62 @@ test("createLogStream filters by level and traceId", async () => {
   assert.equal(rec.msg, "err");
   assert.equal(rec.traceId, "t2");
 });
+
+test("consoleIncludeContext false hides ctx in console output (option)", async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.join(" "));
+  };
+
+  try {
+    const logger = createLogger({
+      app: "app",
+      version: "1.0.0",
+      logDir: tmpDir,
+      consoleIncludeContext: false
+    });
+
+    logger.info("msg", { foo: "bar" });
+    await logger.flush();
+    await logger.close();
+
+    assert.ok(logs.some((l) => l.includes("msg")), "should output message");
+    assert.ok(logs.every((l) => !l.includes("\"foo\":\"bar\"")), "ctx should be omitted");
+  } finally {
+    console.log = origLog;
+  }
+});
+
+test("consoleIncludeContext can be disabled via config file", async () => {
+  const logs: string[] = [];
+  const origLog = console.log;
+  const origCwd = process.cwd();
+  console.log = (...args: unknown[]) => {
+    logs.push(args.join(" "));
+  };
+
+  try {
+    const configDir = tmpDir;
+    process.chdir(configDir);
+    const logDir = path.join(configDir, "logs");
+    fs.mkdirSync(logDir, { recursive: true });
+
+    const cfg = {
+      consoleIncludeContext: false,
+      logDir
+    };
+    fs.writeFileSync(path.join(configDir, ".IrikaSystemLoggerConfig"), JSON.stringify(cfg));
+
+    const logger = createLogger({ app: "app", version: "1.0.0" });
+    logger.info("cfg-msg", { foo: "bar" });
+    await logger.flush();
+    await logger.close();
+
+    assert.ok(logs.some((l) => l.includes("cfg-msg")), "should output message");
+    assert.ok(logs.every((l) => !l.includes("\"foo\":\"bar\"")), "ctx should be omitted by config");
+  } finally {
+    process.chdir(origCwd);
+    console.log = origLog;
+  }
+});

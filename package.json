@@ -22,7 +22,7 @@
     "clean": "rimraf dist",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"tests/**/*.test.ts\""
+    "test": "tsx --test \"tests/**/*.test.ts\" \"test/**/*.test.ts\""
   },
   "engines": {
     "node": ">=18"
