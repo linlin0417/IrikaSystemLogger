@@ -45,7 +45,7 @@ function levelStyle(lvl: string): string {
   }
 }
 
-export function formatConsoleLine(record: LogRecord, timeZone: string): string {
+export function formatConsoleLine(record: LogRecord, timeZone: string, includeContext = true): string {
   const now = new Date(record.ts);
   const ts = formatConsoleTimestamp(now, timeZone);
   const tsPart = color(ts, ANSI.gray + ANSI.dim);
@@ -55,7 +55,7 @@ export function formatConsoleLine(record: LogRecord, timeZone: string): string {
   const msgPart = color(record.msg, ANSI.white);
 
   let ctxPart = "";
-  if (record.ctx && Object.keys(record.ctx).length > 0) {
+  if (includeContext && record.ctx && Object.keys(record.ctx).length > 0) {
     try {
       const ctxText = JSON.stringify(record.ctx);
       ctxPart = " " + color(ctxText, ANSI.gray);

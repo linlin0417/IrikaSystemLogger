@@ -17,6 +17,8 @@ const logger = createLogger({
   app: "my-app",
   version: "1.0.0",
   logDir: "./logs",
+  // 若不想在 console 顯示 ctx，可關閉（不影響檔案輸出內容）
+  consoleIncludeContext: false
 });
 
 logger.info("service started", { traceId: "t-001" });

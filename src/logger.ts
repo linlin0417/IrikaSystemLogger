@@ -11,6 +11,7 @@ export interface LoggerInitOptions {
   level?: keyof typeof levelPriority;
   timezone?: string;
   pidMode?: "independent" | "ipc_master";
+  consoleIncludeContext?: boolean;
   maxFileSizeBytes?: number;
   maxTotalSizeBytes?: number;
   maxFiles?: number | null;
@@ -33,7 +34,7 @@ export class IrikaLogger {
       this.moduleName = shared.moduleName;
     } else {
       this.opts = resolveOptions(init);
-      this.transports = [new ConsoleTransport(this.opts.timezone), new FileTransport(this.opts)];
+      this.transports = [new ConsoleTransport(this.opts.timezone, this.opts.consoleIncludeContext), new FileTransport(this.opts)];
       this.moduleName = undefined;
       if (this.opts.pidMode === "ipc_master") {
         // 模式 B 尚未實作，先提示使用者改用 independent。

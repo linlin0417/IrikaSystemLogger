@@ -47,6 +47,7 @@ export interface BaseLoggerOptions {
   level?: keyof typeof levelPriority;
   timezone?: string;
   pidMode?: "independent" | "ipc_master";
+  consoleIncludeContext?: boolean;
   maxFileSizeBytes?: number;
   maxTotalSizeBytes?: number;
   maxFiles?: number | null;

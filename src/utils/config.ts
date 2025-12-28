@@ -13,7 +13,8 @@ const DEFAULTS = {
   batchSizeBytes: 4096,
   highWaterMark: 64 * 1024,
   level: "INFO" as keyof typeof levelPriority,
-  pidMode: "independent" as BaseLoggerOptions["pidMode"]
+  pidMode: "independent" as BaseLoggerOptions["pidMode"],
+  consoleIncludeContext: true
 };
 
 export interface ResolvedLoggerOptions {
@@ -23,6 +24,7 @@ export interface ResolvedLoggerOptions {
   level: keyof typeof levelPriority;
   timezone: string;
   pidMode: "independent" | "ipc_master";
+  consoleIncludeContext: boolean;
   maxFileSizeBytes: number;
   maxTotalSizeBytes: number;
   maxFiles: number | null;
@@ -77,6 +79,7 @@ export function resolveOptions(user: BaseLoggerOptions): ResolvedLoggerOptions {
     level,
     timezone: tz,
     pidMode,
+    consoleIncludeContext: merged.consoleIncludeContext ?? DEFAULTS.consoleIncludeContext,
     maxFileSizeBytes: merged.maxFileSizeBytes ?? DEFAULTS.maxFileSizeBytes,
     maxTotalSizeBytes: merged.maxTotalSizeBytes ?? DEFAULTS.maxTotalSizeBytes,
     maxFiles: merged.maxFiles ?? DEFAULTS.maxFiles,
