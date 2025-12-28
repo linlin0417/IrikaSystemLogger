@@ -1,6 +1,6 @@
 {
   "name": "irika-system-logger",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Structured logger with rotation, retention, console/file transports for Node 18+.",
   "license": "MIT",
   "type": "module",

@@ -28,14 +28,6 @@ logger.info("service started", { traceId: "t-001" });
 - 檔案輪替：依大小或日期切檔，寫入 EOF 校驗與下一檔案指標
 - 保存策略：依檔案數量、總大小或檔齡清理
 - 串流讀取：`createLogStream` 可依等級、traceId 篩選
-- 控制台輸出：人類可讀彩色格式
+- 控制台輸出：彩色格式
 
-## 腳本
 
-- 建置：`npm run build`
-- 型別檢查：`npm run typecheck`
-- 測試：`npm test`
-
-## 文件說明
-
-專案開發文件放在 `.md/` 目錄，供本地參考，不會納入版控；GitHub 預設會以此 README 作為專案首頁。
