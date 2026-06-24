@@ -8,6 +8,15 @@ import { ResolvedLoggerOptions } from "../utils/config";
 
 const DIRECT_LEVELS = new Set<LogRecord["lvl"]>(["ERROR", "ASSERT", "SECURITY"]);
 
+function serializeRecord(record: LogRecord): string {
+  const base = `{"ts":"${record.ts}","lvl":"${record.lvl}","app":${JSON.stringify(record.app)}`;
+  const mod = record.mod ? `,"mod":${JSON.stringify(record.mod)}` : "";
+  const msg = `,"msg":${JSON.stringify(record.msg)}`;
+  const pid = `,"pid":${record.pid}`;
+  const trace = record.traceId ? `,"traceId":${JSON.stringify(record.traceId)}` : "";
+  const ctx = record.ctx ? `,"ctx":${JSON.stringify(record.ctx)}` : "";
+  return `${base}${mod}${msg}${pid}${trace}${ctx}}\n`;
+}
 export class FileTransport implements Transport {
   private opts: ResolvedLoggerOptions;
   private logDir: string;
@@ -23,6 +32,7 @@ export class FileTransport implements Transport {
   private currentFilePath = "";
   private currentSize = 0;
   private exitHandler: (() => void) | null = null;
+  private ioTriggered = false;
 
   constructor(opts: ResolvedLoggerOptions) {
     this.opts = opts;
@@ -42,24 +52,54 @@ export class FileTransport implements Transport {
   }
 
   log(record: LogRecord): void {
+    const line = serializeRecord(record);
+    const lineBytes = Buffer.byteLength(line);
+    // 假設 timestamp 為 ISO 格式，前 10 碼即為 YYYY-MM-DD
+    const dateKey = record.ts.substring(0, 10);
+
+    // 如果是緊急等級，或遇到需要切檔的情況，必須排入 queue 確保順序與資料正確性
+    if (DIRECT_LEVELS.has(record.lvl) || this.shouldRotate(dateKey, lineBytes)) {
+      this.enqueue(async () => {
+        if (this.shouldRotate(dateKey, lineBytes)) {
+          const reason = dateKey !== this.currentDateKey ? "rotate_date" : "rotate_size";
+          await this.rotate(reason);
+        }
+
+        if (DIRECT_LEVELS.has(record.lvl)) {
+          await this.flushBuffer();
+          await this.writeLine(line, lineBytes, true);
+        } else {
+          this.buffer.push(line);
+          this.bufferBytes += lineBytes;
+          if (this.bufferBytes >= this.opts.batchSizeBytes) {
+            await this.flushBuffer();
+          }
+        }
+      });
+      return;
+    }
+
+    // 正常等級且不需要切檔 (Fast path)，完全同步放入 Buffer，避免產生多餘的 Promise 鏈
+    this.buffer.push(line);
+    this.bufferBytes += lineBytes;
+
+    if (this.bufferBytes >= this.opts.batchSizeBytes) {
+      this.triggerIO();
+    }
+  }
+
+  private triggerIO() {
+    if (this.ioTriggered) return;
+    this.ioTriggered = true;
     this.enqueue(async () => {
-      const line = JSON.stringify(record) + "\n";
-      const lineBytes = Buffer.byteLength(line);
-      const now = new Date(record.ts);
-      const { dateKey } = formatTimestamp(now, this.opts.timezone);
-
-      if (this.shouldRotate(dateKey, lineBytes)) {
-        const reason = dateKey !== this.currentDateKey ? "rotate_date" : "rotate_size";
-        await this.rotate(reason);
-      }
-
-      if (DIRECT_LEVELS.has(record.lvl)) {
-        await this.writeLine(line, lineBytes, true);
-      } else {
-        this.buffer.push(line);
-        this.bufferBytes += lineBytes;
+      try {
         if (this.bufferBytes >= this.opts.batchSizeBytes) {
           await this.flushBuffer();
+        }
+      } finally {
+        this.ioTriggered = false;
+        if (this.bufferBytes >= this.opts.batchSizeBytes) {
+          this.triggerIO();
         }
       }
     });

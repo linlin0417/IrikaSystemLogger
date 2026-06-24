@@ -63,29 +63,52 @@ function parseOffset(offsetLabel: string): string {
   return `${sign}${hh}:${mm}`;
 }
 
+const tsCache = new Map<string, { baseTs: string; offset: string; dateKey: string }>();
+let lastTsCacheClean = Date.now();
+
 export function formatTimestamp(date: Date, timeZone: string): { ts: string; dateKey: string } {
-  const formatter = getFormatter(timeZone);
-  const parts = formatter.formatToParts(date);
-  const byType: Record<string, string> = {};
-  for (const p of parts) {
-    if (p.type !== "literal") byType[p.type] = p.value;
+  const timeMs = date.getTime();
+  const timeSec = Math.floor(timeMs / 1000);
+  const cacheKey = `${timeZone}:${timeSec}`;
+
+  if (timeMs - lastTsCacheClean > 60000) {
+    tsCache.clear();
+    lastTsCacheClean = timeMs;
   }
 
-  const year = byType.year ?? "0000";
-  const month = byType.month ?? "00";
-  const day = byType.day ?? "00";
-  const hour = byType.hour ?? "00";
-  const minute = byType.minute ?? "00";
-  const second = byType.second ?? "00";
-  const ms = byType.fractionalSecond ?? "000";
+  let cached = tsCache.get(cacheKey);
+  if (!cached) {
+    const formatter = getFormatter(timeZone);
+    const parts = formatter.formatToParts(date);
+    const byType: Record<string, string> = {};
+    for (const p of parts) {
+      if (p.type !== "literal") byType[p.type] = p.value;
+    }
 
-  const offsetFormatter = getOffsetFormatter(timeZone);
-  const offsetLabel = offsetFormatter.format(date);
-  const offset = parseOffset(offsetLabel);
+    const year = byType.year ?? "0000";
+    const month = byType.month ?? "00";
+    const day = byType.day ?? "00";
+    const hour = byType.hour ?? "00";
+    const minute = byType.minute ?? "00";
+    const second = byType.second ?? "00";
+
+    const offsetFormatter = getOffsetFormatter(timeZone);
+    const offsetLabel = offsetFormatter.format(date);
+    const offset = parseOffset(offsetLabel);
+
+    cached = {
+      baseTs: `${year}-${month}-${day}T${hour}:${minute}:${second}`,
+      offset,
+      dateKey: `${year}-${month}-${day}`
+    };
+    tsCache.set(cacheKey, cached);
+  }
+
+  const ms = (timeMs % 1000).toString().padStart(3, "0");
 
   return {
-    ts: `${year}-${month}-${day}T${hour}:${minute}:${second}.${ms}${offset}`,
-    dateKey: `${year}-${month}-${day}`
+    ts: `${cached.baseTs}.${ms}${cached.offset}`,
+    dateKey: cached.dateKey
   };
 }
 
