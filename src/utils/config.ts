@@ -12,18 +12,19 @@ const DEFAULTS = {
   flushIntervalMs: 1000,
   batchSizeBytes: 4096,
   highWaterMark: 64 * 1024,
-  level: "INFO" as keyof typeof levelPriority,
+  level: "INFO" as string,
   pidMode: "independent" as BaseLoggerOptions["pidMode"],
-  consoleIncludeContext: true
+  consoleIncludeContext: true,
+  useWorkerThread: false
 };
 
 export interface ResolvedLoggerOptions {
   app: string;
   version: string;
   logDir: string;
-  level: keyof typeof levelPriority;
+  level: string;
   timezone: string;
-  pidMode: "independent" | "ipc_master";
+  pidMode: "independent" | "ipc_master" | "ipc_worker";
   consoleIncludeContext: boolean;
   maxFileSizeBytes: number;
   maxTotalSizeBytes: number;
@@ -32,6 +33,10 @@ export interface ResolvedLoggerOptions {
   flushIntervalMs: number;
   batchSizeBytes: number;
   highWaterMark: number;
+  customLevels?: Record<string, number>;
+  consoleColorMap?: Record<string, string>;
+  consoleFormatter?: (record: import("../types").LogRecord) => string;
+  useWorkerThread: boolean;
 }
 
 function normalizeTimeZone(tz: string): string {
@@ -69,14 +74,13 @@ export function resolveOptions(user: BaseLoggerOptions): ResolvedLoggerOptions {
   } as BaseLoggerOptions;
 
   const tz = normalizeTimeZone(merged.timezone ?? DEFAULTS.timezone);
-  const candidateLevel = (merged.level ?? DEFAULTS.level).toUpperCase() as keyof typeof levelPriority;
-  const level = levelPriority[candidateLevel] ? candidateLevel : DEFAULTS.level;
-  const pidMode = (merged.pidMode ?? DEFAULTS.pidMode) as "independent" | "ipc_master";
+  const candidateLevel = (merged.level ?? DEFAULTS.level).toUpperCase();
+  const pidMode = (merged.pidMode ?? DEFAULTS.pidMode) as "independent" | "ipc_master" | "ipc_worker";
   return {
     app: merged.app,
     version: merged.version,
     logDir: merged.logDir ?? DEFAULTS.logDir,
-    level,
+    level: candidateLevel,
     timezone: tz,
     pidMode,
     consoleIncludeContext: merged.consoleIncludeContext ?? DEFAULTS.consoleIncludeContext,
@@ -86,6 +90,10 @@ export function resolveOptions(user: BaseLoggerOptions): ResolvedLoggerOptions {
     maxFileAgeDays: merged.maxFileAgeDays ?? DEFAULTS.maxFileAgeDays,
     flushIntervalMs: merged.flushIntervalMs ?? DEFAULTS.flushIntervalMs,
     batchSizeBytes: merged.batchSizeBytes ?? DEFAULTS.batchSizeBytes,
-    highWaterMark: merged.highWaterMark ?? DEFAULTS.highWaterMark
+    highWaterMark: merged.highWaterMark ?? DEFAULTS.highWaterMark,
+    customLevels: merged.customLevels,
+    consoleColorMap: merged.consoleColorMap,
+    consoleFormatter: merged.consoleFormatter,
+    useWorkerThread: merged.useWorkerThread ?? DEFAULTS.useWorkerThread
   };
 }

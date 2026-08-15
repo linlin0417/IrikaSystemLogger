@@ -1,0 +1,42 @@
+
+namespace IrikaLoggerViewer
+{
+    [default_interface]
+    runtimeclass MainWindow : Microsoft.UI.Xaml.Window
+    {
+        MainWindow();
+    };
+
+
+
+    [bindable]
+    [default_interface]
+    runtimeclass LogSettings : Microsoft.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        LogSettings();
+        Double ColTimeWidth;
+        Double ColLevelWidth;
+        Double ColModuleWidth;
+        Double ColMessageWidth;
+        Double ColTraceIdWidth;
+    }
+
+    [bindable]
+    [default_interface]
+    runtimeclass LogItem : Microsoft.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        LogItem(String timestamp, String level, String modName, String logMsg, String traceId, String ctx, LogSettings settings);
+        String Timestamp { get; };
+        String Level { get; };
+        String ModuleName { get; };
+        String LogMessage { get; };
+        String TraceId { get; };
+        String Context { get; };
+        LogSettings Settings { get; };
+
+        Boolean IsExpanded { get; };
+        void ToggleExpand();
+        Microsoft.UI.Xaml.Visibility DetailVisibility { get; };
+        Microsoft.UI.Xaml.Media.Brush LevelColor { get; };
+    }
+}

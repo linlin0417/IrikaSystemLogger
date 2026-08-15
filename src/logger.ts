@@ -2,6 +2,8 @@ import { resolveOptions, ResolvedLoggerOptions } from "./utils/config";
 import { formatTimestamp } from "./utils/time";
 import { ConsoleTransport } from "./transports/console";
 import { FileTransport } from "./transports/file";
+import { WorkerTransport } from "./transports/worker";
+import { IpcTransport } from "./transports/ipc";
 import { levelPriority, LogRecord, LogLevel, Transport } from "./types";
 
 export interface LoggerInitOptions {
@@ -26,27 +28,50 @@ export class IrikaLogger {
   private readonly transports: Transport[];
   private readonly minLevelScore: number;
   private readonly moduleName?: string;
+  private readonly combinedPriority: Record<string, number>;
+  private listeners: Set<(record: LogRecord) => void> = new Set();
 
-  constructor(init: LoggerInitOptions, shared?: { transports: Transport[]; opts: ResolvedLoggerOptions; moduleName?: string }) {
+  constructor(init: LoggerInitOptions, shared?: { transports: Transport[]; opts: ResolvedLoggerOptions; moduleName?: string; combinedPriority?: Record<string, number>; listeners?: Set<(record: LogRecord) => void> }) {
     if (shared) {
       this.opts = shared.opts;
       this.transports = shared.transports;
       this.moduleName = shared.moduleName;
+      this.combinedPriority = shared.combinedPriority ?? { ...levelPriority, ...this.opts.customLevels };
+      this.listeners = shared.listeners ?? new Set();
     } else {
       this.opts = resolveOptions(init);
-      this.transports = [new ConsoleTransport(this.opts.timezone, this.opts.consoleIncludeContext), new FileTransport(this.opts)];
-      this.moduleName = undefined;
+      this.combinedPriority = { ...levelPriority, ...this.opts.customLevels };
+      this.transports = [new ConsoleTransport(this.opts)];
+      
+      if (this.opts.useWorkerThread) {
+        this.transports.push(new WorkerTransport(this.opts));
+      } else {
+        this.transports.push(new FileTransport(this.opts));
+      }
+      
       if (this.opts.pidMode === "ipc_master") {
-        // 模式 B 尚未實作，先提示使用者改用 independent。
         // eslint-disable-next-line no-console
         console.warn("ipc_master 模式尚未實作，將改用 independent");
+      } else if (this.opts.pidMode === "ipc_worker") {
+        this.transports.push(new IpcTransport(this.opts));
       }
+      
+      this.moduleName = undefined;
     }
-    this.minLevelScore = levelPriority[this.opts.level];
+    this.minLevelScore = this.combinedPriority[this.opts.level] ?? this.combinedPriority["INFO"];
   }
 
-  private emit(level: LogLevel, msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
-    if (level !== "SYSTEM" && levelPriority[level] < this.minLevelScore) return;
+  on(event: 'log', listener: (record: LogRecord) => void) {
+    this.listeners.add(listener);
+  }
+
+  off(event: 'log', listener: (record: LogRecord) => void) {
+    this.listeners.delete(listener);
+  }
+
+  private emit(level: string, msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
+    const priority = this.combinedPriority[level] ?? 10;
+    if (level !== "SYSTEM" && priority < this.minLevelScore) return;
     const now = new Date();
     const { ts } = formatTimestamp(now, this.opts.timezone);
     const record: LogRecord = {
@@ -62,10 +87,19 @@ export class IrikaLogger {
     for (const t of this.transports) {
       t.log(record);
     }
+    if (this.listeners.size > 0) {
+      for (const listener of this.listeners) {
+        listener(record);
+      }
+    }
   }
 
   verbose(msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
     this.emit("VERBOSE", msg, ctx, traceId);
+  }
+
+  success(msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
+    this.emit("SUCCESS", msg, ctx, traceId);
   }
 
   debug(msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
@@ -100,7 +134,9 @@ export class IrikaLogger {
     return new IrikaLogger({ app: this.opts.app, version: this.opts.version }, {
       transports: this.transports,
       opts: this.opts,
-      moduleName
+      moduleName,
+      combinedPriority: this.combinedPriority,
+      listeners: this.listeners
     });
   }
 

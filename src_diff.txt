@@ -1,0 +1,372 @@
+diff --git a/.gitignore b/.gitignore
+index ee06193..65d5bde 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -14,4 +14,7 @@ UTest/
+ 
+ # 開發文件（不納入版控）
+ .md/
+-.github/
+\ No newline at end of file
++.github/
++
++# 模型自動化測試用文件(用於自動測試套件)
++.antigravity/
+\ No newline at end of file
+diff --git a/README.md b/README.md
+index 1222db7..e8b68fc 100644
+--- a/README.md
++++ b/README.md
+@@ -2,6 +2,9 @@
+ 
+ 高效的 JSON 行式 logger，內建檔案輪替、保存策略、批次寫入與串流讀取，適合多進程及長時間服務使用。
+ 
++## Docs
++[How to use for Context7](Docs/HOWTOUSE.md) | [GUI Logger Viewer](docs/GUI.md) | [API Reference](Docs/API.md)
++
+ ## 安裝
+ 
+ ```bash
+diff --git a/package.json b/package.json
+index dfd35a0..9749cf7 100644
+--- a/package.json
++++ b/package.json
+@@ -18,7 +18,7 @@
+     "dist"
+   ],
+   "scripts": {
+-    "build": "tsup src/index.ts --format esm,cjs --dts --out-dir dist",
++    "build": "tsup src/index.ts src/transports/worker-script.ts --format esm,cjs --dts --out-dir dist",
+     "clean": "rimraf dist",
+     "lint": "eslint . --ext .ts",
+     "typecheck": "tsc --noEmit",
+diff --git a/src/logger.ts b/src/logger.ts
+index d0301db..233a736 100644
+--- a/src/logger.ts
++++ b/src/logger.ts
+@@ -2,6 +2,8 @@ import { resolveOptions, ResolvedLoggerOptions } from "./utils/config";
+ import { formatTimestamp } from "./utils/time";
+ import { ConsoleTransport } from "./transports/console";
+ import { FileTransport } from "./transports/file";
++import { WorkerTransport } from "./transports/worker";
++import { IpcTransport } from "./transports/ipc";
+ import { levelPriority, LogRecord, LogLevel, Transport } from "./types";
+ 
+ export interface LoggerInitOptions {
+@@ -26,27 +28,50 @@ export class IrikaLogger {
+   private readonly transports: Transport[];
+   private readonly minLevelScore: number;
+   private readonly moduleName?: string;
++  private readonly combinedPriority: Record<string, number>;
++  private listeners: Set<(record: LogRecord) => void> = new Set();
+ 
+-  constructor(init: LoggerInitOptions, shared?: { transports: Transport[]; opts: ResolvedLoggerOptions; moduleName?: string }) {
++  constructor(init: LoggerInitOptions, shared?: { transports: Transport[]; opts: ResolvedLoggerOptions; moduleName?: string; combinedPriority?: Record<string, number>; listeners?: Set<(record: LogRecord) => void> }) {
+     if (shared) {
+       this.opts = shared.opts;
+       this.transports = shared.transports;
+       this.moduleName = shared.moduleName;
++      this.combinedPriority = shared.combinedPriority ?? { ...levelPriority, ...this.opts.customLevels };
++      this.listeners = shared.listeners ?? new Set();
+     } else {
+       this.opts = resolveOptions(init);
+-      this.transports = [new ConsoleTransport(this.opts.timezone, this.opts.consoleIncludeContext), new FileTransport(this.opts)];
+-      this.moduleName = undefined;
++      this.combinedPriority = { ...levelPriority, ...this.opts.customLevels };
++      this.transports = [new ConsoleTransport(this.opts)];
++      
++      if (this.opts.useWorkerThread) {
++        this.transports.push(new WorkerTransport(this.opts));
++      } else {
++        this.transports.push(new FileTransport(this.opts));
++      }
++      
+       if (this.opts.pidMode === "ipc_master") {
+-        // 模式 B 尚未實作，先提示使用者改用 independent。
+         // eslint-disable-next-line no-console
+         console.warn("ipc_master 模式尚未實作，將改用 independent");
++      } else if (this.opts.pidMode === "ipc_worker") {
++        this.transports.push(new IpcTransport(this.opts));
+       }
++      
++      this.moduleName = undefined;
+     }
+-    this.minLevelScore = levelPriority[this.opts.level];
++    this.minLevelScore = this.combinedPriority[this.opts.level] ?? this.combinedPriority["INFO"];
+   }
+ 
+-  private emit(level: LogLevel, msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
+-    if (level !== "SYSTEM" && levelPriority[level] < this.minLevelScore) return;
++  on(event: 'log', listener: (record: LogRecord) => void) {
++    this.listeners.add(listener);
++  }
++
++  off(event: 'log', listener: (record: LogRecord) => void) {
++    this.listeners.delete(listener);
++  }
++
++  private emit(level: string, msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
++    const priority = this.combinedPriority[level] ?? 10;
++    if (level !== "SYSTEM" && priority < this.minLevelScore) return;
+     const now = new Date();
+     const { ts } = formatTimestamp(now, this.opts.timezone);
+     const record: LogRecord = {
+@@ -62,12 +87,21 @@ export class IrikaLogger {
+     for (const t of this.transports) {
+       t.log(record);
+     }
++    if (this.listeners.size > 0) {
++      for (const listener of this.listeners) {
++        listener(record);
++      }
++    }
+   }
+ 
+   verbose(msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
+     this.emit("VERBOSE", msg, ctx, traceId);
+   }
+ 
++  success(msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
++    this.emit("SUCCESS", msg, ctx, traceId);
++  }
++
+   debug(msg: string, ctx?: Record<string, unknown>, traceId?: string): void {
+     this.emit("DEBUG", msg, ctx, traceId);
+   }
+@@ -100,7 +134,9 @@ export class IrikaLogger {
+     return new IrikaLogger({ app: this.opts.app, version: this.opts.version }, {
+       transports: this.transports,
+       opts: this.opts,
+-      moduleName
++      moduleName,
++      combinedPriority: this.combinedPriority,
++      listeners: this.listeners
+     });
+   }
+ 
+diff --git a/src/transports/console.ts b/src/transports/console.ts
+index 4905874..f48795f 100644
+--- a/src/transports/console.ts
++++ b/src/transports/console.ts
+@@ -1,11 +1,18 @@
+ import { LogRecord, Transport } from "../types";
+ import { formatConsoleLine } from "../utils/console-format";
+ 
++import { ResolvedLoggerOptions } from "../utils/config";
++
+ export class ConsoleTransport implements Transport {
+-  constructor(private readonly timezone: string, private readonly includeContext = true) {}
++  constructor(private readonly opts: ResolvedLoggerOptions) {}
+ 
+   log(record: LogRecord): void {
+-    const line = formatConsoleLine(record, this.timezone, this.includeContext);
++    const line = formatConsoleLine(record, {
++      timezone: this.opts.timezone,
++      consoleIncludeContext: this.opts.consoleIncludeContext,
++      consoleColorMap: this.opts.consoleColorMap,
++      consoleFormatter: this.opts.consoleFormatter
++    });
+     // eslint-disable-next-line no-console
+     console.log(line);
+   }
+diff --git a/src/types.ts b/src/types.ts
+index e65c954..471af23 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -2,17 +2,20 @@ export type LogLevel =
+   | "VERBOSE"
+   | "DEBUG"
+   | "INFO"
++  | "SUCCESS"
+   | "WARN"
+   | "ERROR"
+   | "ASSERT"
+   | "SECURITY"
+   | "PERFORMANCE"
+-  | "SYSTEM";
++  | "SYSTEM"
++  | (string & {});
+ 
+-export const levelPriority: Record<Exclude<LogLevel, "SYSTEM">, number> = {
++export const levelPriority: Record<string, number> = {
+   VERBOSE: 10,
+   DEBUG: 20,
+   INFO: 30,
++  SUCCESS: 35,
+   WARN: 40,
+   ERROR: 50,
+   ASSERT: 60,
+@@ -44,9 +47,9 @@ export interface BaseLoggerOptions {
+   app: string;
+   version: string;
+   logDir?: string;
+-  level?: keyof typeof levelPriority;
++  level?: string;
+   timezone?: string;
+-  pidMode?: "independent" | "ipc_master";
++  pidMode?: "independent" | "ipc_master" | "ipc_worker";
+   consoleIncludeContext?: boolean;
+   maxFileSizeBytes?: number;
+   maxTotalSizeBytes?: number;
+@@ -55,6 +58,10 @@ export interface BaseLoggerOptions {
+   flushIntervalMs?: number;
+   batchSizeBytes?: number;
+   highWaterMark?: number;
++  customLevels?: Record<string, number>;
++  consoleColorMap?: Record<string, string>;
++  consoleFormatter?: (record: LogRecord) => string;
++  useWorkerThread?: boolean;
+ }
+ 
+ export interface Transport {
+diff --git a/src/utils/config.ts b/src/utils/config.ts
+index 5dbf362..652da4e 100644
+--- a/src/utils/config.ts
++++ b/src/utils/config.ts
+@@ -12,18 +12,19 @@ const DEFAULTS = {
+   flushIntervalMs: 1000,
+   batchSizeBytes: 4096,
+   highWaterMark: 64 * 1024,
+-  level: "INFO" as keyof typeof levelPriority,
++  level: "INFO" as string,
+   pidMode: "independent" as BaseLoggerOptions["pidMode"],
+-  consoleIncludeContext: true
++  consoleIncludeContext: true,
++  useWorkerThread: false
+ };
+ 
+ export interface ResolvedLoggerOptions {
+   app: string;
+   version: string;
+   logDir: string;
+-  level: keyof typeof levelPriority;
++  level: string;
+   timezone: string;
+-  pidMode: "independent" | "ipc_master";
++  pidMode: "independent" | "ipc_master" | "ipc_worker";
+   consoleIncludeContext: boolean;
+   maxFileSizeBytes: number;
+   maxTotalSizeBytes: number;
+@@ -32,6 +33,10 @@ export interface ResolvedLoggerOptions {
+   flushIntervalMs: number;
+   batchSizeBytes: number;
+   highWaterMark: number;
++  customLevels?: Record<string, number>;
++  consoleColorMap?: Record<string, string>;
++  consoleFormatter?: (record: import("../types").LogRecord) => string;
++  useWorkerThread: boolean;
+ }
+ 
+ function normalizeTimeZone(tz: string): string {
+@@ -69,14 +74,13 @@ export function resolveOptions(user: BaseLoggerOptions): ResolvedLoggerOptions {
+   } as BaseLoggerOptions;
+ 
+   const tz = normalizeTimeZone(merged.timezone ?? DEFAULTS.timezone);
+-  const candidateLevel = (merged.level ?? DEFAULTS.level).toUpperCase() as keyof typeof levelPriority;
+-  const level = levelPriority[candidateLevel] ? candidateLevel : DEFAULTS.level;
+-  const pidMode = (merged.pidMode ?? DEFAULTS.pidMode) as "independent" | "ipc_master";
++  const candidateLevel = (merged.level ?? DEFAULTS.level).toUpperCase();
++  const pidMode = (merged.pidMode ?? DEFAULTS.pidMode) as "independent" | "ipc_master" | "ipc_worker";
+   return {
+     app: merged.app,
+     version: merged.version,
+     logDir: merged.logDir ?? DEFAULTS.logDir,
+-    level,
++    level: candidateLevel,
+     timezone: tz,
+     pidMode,
+     consoleIncludeContext: merged.consoleIncludeContext ?? DEFAULTS.consoleIncludeContext,
+@@ -86,6 +90,10 @@ export function resolveOptions(user: BaseLoggerOptions): ResolvedLoggerOptions {
+     maxFileAgeDays: merged.maxFileAgeDays ?? DEFAULTS.maxFileAgeDays,
+     flushIntervalMs: merged.flushIntervalMs ?? DEFAULTS.flushIntervalMs,
+     batchSizeBytes: merged.batchSizeBytes ?? DEFAULTS.batchSizeBytes,
+-    highWaterMark: merged.highWaterMark ?? DEFAULTS.highWaterMark
++    highWaterMark: merged.highWaterMark ?? DEFAULTS.highWaterMark,
++    customLevels: merged.customLevels,
++    consoleColorMap: merged.consoleColorMap,
++    consoleFormatter: merged.consoleFormatter,
++    useWorkerThread: merged.useWorkerThread ?? DEFAULTS.useWorkerThread
+   };
+ }
+diff --git a/src/utils/console-format.ts b/src/utils/console-format.ts
+index 4a1aae5..c2967ff 100644
+--- a/src/utils/console-format.ts
++++ b/src/utils/console-format.ts
+@@ -22,40 +22,54 @@ function color(text: string, code: string): string {
+   return `${code}${text}${ANSI.reset}`;
+ }
+ 
+-function levelStyle(lvl: string): string {
++function levelStyle(lvl: string, colorMap?: Record<string, string>): string {
+   const padded = lvl.padEnd(9, " ");
++  if (colorMap && colorMap[lvl]) {
++    return color(padded, colorMap[lvl]);
++  }
+   switch (lvl) {
+     case "ERROR":
+     case "ASSERT":
++    case "SECURITY":
+       return color(padded, ANSI.bgRed + ANSI.white);
+     case "WARN":
+       return color(padded, ANSI.bgYellow + ANSI.white);
+     case "INFO":
++    case "PERFORMANCE":
+       return color(padded, ANSI.bgBlue + ANSI.white);
+-    case "DEBUG":
++    case "SUCCESS":
+       return color(padded, ANSI.bgGreen + ANSI.white);
++    case "DEBUG":
++      return color(padded, ANSI.cyan);
+     case "VERBOSE":
+-      return color(padded, ANSI.bgMagenta + ANSI.white);
+-    case "SECURITY":
+-      return color(padded, ANSI.bgRed + ANSI.white);
+-    case "PERFORMANCE":
+-      return color(padded, ANSI.bgBlue + ANSI.white);
++      return color(padded, ANSI.magenta);
+     default:
+-      return color(padded, ANSI.bgMagenta + ANSI.white);
++      return color(padded, ANSI.gray);
+   }
+ }
+ 
+-export function formatConsoleLine(record: LogRecord, timeZone: string, includeContext = true): string {
++export interface ConsoleFormatOptions {
++  timezone: string;
++  consoleIncludeContext?: boolean;
++  consoleColorMap?: Record<string, string>;
++  consoleFormatter?: (record: LogRecord) => string;
++}
++
++export function formatConsoleLine(record: LogRecord, opts: ConsoleFormatOptions): string {
++  if (opts.consoleFormatter) {
++    return opts.consoleFormatter(record);
++  }
++
+   const now = new Date(record.ts);
+-  const ts = formatConsoleTimestamp(now, timeZone);
++  const ts = formatConsoleTimestamp(now, opts.timezone);
+   const tsPart = color(ts, ANSI.gray + ANSI.dim);
+-  const lvlPart = levelStyle(record.lvl);
++  const lvlPart = levelStyle(record.lvl, opts.consoleColorMap);
+   const appPart = color(record.app, ANSI.cyan);
+   const modPart = record.mod ? ` ${color(record.mod, ANSI.blue)}` : "";
+   const msgPart = color(record.msg, ANSI.white);
+ 
+   let ctxPart = "";
+-  if (includeContext && record.ctx && Object.keys(record.ctx).length > 0) {
++  if (opts.consoleIncludeContext !== false && record.ctx && Object.keys(record.ctx).length > 0) {
+     try {
+       const ctxText = JSON.stringify(record.ctx);
+       ctxPart = " " + color(ctxText, ANSI.gray);
+diff --git a/tsconfig.json b/tsconfig.json
+index ce3a58f..c195353 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -11,5 +11,5 @@
+     "noEmit": true
+   },
+   "include": ["src/**/*.ts"],
+-  "exclude": ["dist", "node_modules"]
++  "exclude": ["dist", "node_modules", "gui"]
+ }

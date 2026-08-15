@@ -2,17 +2,20 @@ export type LogLevel =
   | "VERBOSE"
   | "DEBUG"
   | "INFO"
+  | "SUCCESS"
   | "WARN"
   | "ERROR"
   | "ASSERT"
   | "SECURITY"
   | "PERFORMANCE"
-  | "SYSTEM";
+  | "SYSTEM"
+  | (string & {});
 
-export const levelPriority: Record<Exclude<LogLevel, "SYSTEM">, number> = {
+export const levelPriority: Record<string, number> = {
   VERBOSE: 10,
   DEBUG: 20,
   INFO: 30,
+  SUCCESS: 35,
   WARN: 40,
   ERROR: 50,
   ASSERT: 60,
@@ -44,9 +47,9 @@ export interface BaseLoggerOptions {
   app: string;
   version: string;
   logDir?: string;
-  level?: keyof typeof levelPriority;
+  level?: string;
   timezone?: string;
-  pidMode?: "independent" | "ipc_master";
+  pidMode?: "independent" | "ipc_master" | "ipc_worker";
   consoleIncludeContext?: boolean;
   maxFileSizeBytes?: number;
   maxTotalSizeBytes?: number;
@@ -55,6 +58,10 @@ export interface BaseLoggerOptions {
   flushIntervalMs?: number;
   batchSizeBytes?: number;
   highWaterMark?: number;
+  customLevels?: Record<string, number>;
+  consoleColorMap?: Record<string, string>;
+  consoleFormatter?: (record: LogRecord) => string;
+  useWorkerThread?: boolean;
 }
 
 export interface Transport {

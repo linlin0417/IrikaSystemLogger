@@ -22,40 +22,54 @@ function color(text: string, code: string): string {
   return `${code}${text}${ANSI.reset}`;
 }
 
-function levelStyle(lvl: string): string {
+function levelStyle(lvl: string, colorMap?: Record<string, string>): string {
   const padded = lvl.padEnd(9, " ");
+  if (colorMap && colorMap[lvl]) {
+    return color(padded, colorMap[lvl]);
+  }
   switch (lvl) {
     case "ERROR":
     case "ASSERT":
+    case "SECURITY":
       return color(padded, ANSI.bgRed + ANSI.white);
     case "WARN":
       return color(padded, ANSI.bgYellow + ANSI.white);
     case "INFO":
-      return color(padded, ANSI.bgBlue + ANSI.white);
-    case "DEBUG":
-      return color(padded, ANSI.bgGreen + ANSI.white);
-    case "VERBOSE":
-      return color(padded, ANSI.bgMagenta + ANSI.white);
-    case "SECURITY":
-      return color(padded, ANSI.bgRed + ANSI.white);
     case "PERFORMANCE":
       return color(padded, ANSI.bgBlue + ANSI.white);
+    case "SUCCESS":
+      return color(padded, ANSI.bgGreen + ANSI.white);
+    case "DEBUG":
+      return color(padded, ANSI.cyan);
+    case "VERBOSE":
+      return color(padded, ANSI.magenta);
     default:
-      return color(padded, ANSI.bgMagenta + ANSI.white);
+      return color(padded, ANSI.gray);
   }
 }
 
-export function formatConsoleLine(record: LogRecord, timeZone: string, includeContext = true): string {
+export interface ConsoleFormatOptions {
+  timezone: string;
+  consoleIncludeContext?: boolean;
+  consoleColorMap?: Record<string, string>;
+  consoleFormatter?: (record: LogRecord) => string;
+}
+
+export function formatConsoleLine(record: LogRecord, opts: ConsoleFormatOptions): string {
+  if (opts.consoleFormatter) {
+    return opts.consoleFormatter(record);
+  }
+
   const now = new Date(record.ts);
-  const ts = formatConsoleTimestamp(now, timeZone);
+  const ts = formatConsoleTimestamp(now, opts.timezone);
   const tsPart = color(ts, ANSI.gray + ANSI.dim);
-  const lvlPart = levelStyle(record.lvl);
+  const lvlPart = levelStyle(record.lvl, opts.consoleColorMap);
   const appPart = color(record.app, ANSI.cyan);
   const modPart = record.mod ? ` ${color(record.mod, ANSI.blue)}` : "";
   const msgPart = color(record.msg, ANSI.white);
 
   let ctxPart = "";
-  if (includeContext && record.ctx && Object.keys(record.ctx).length > 0) {
+  if (opts.consoleIncludeContext !== false && record.ctx && Object.keys(record.ctx).length > 0) {
     try {
       const ctxText = JSON.stringify(record.ctx);
       ctxPart = " " + color(ctxText, ANSI.gray);
