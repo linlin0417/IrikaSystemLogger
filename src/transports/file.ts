@@ -5,17 +5,12 @@ import { LogRecord, Transport, EofRecord, levelPriority } from "../types";
 import { formatTimestamp } from "../utils/time";
 import { cleanupLogs, ensureDir, generateLogFileName } from "../utils/files";
 import { ResolvedLoggerOptions } from "../utils/config";
+import { safeStringify } from "../utils/safe-stringify";
 
 const DIRECT_LEVELS = new Set<LogRecord["lvl"]>(["ERROR", "ASSERT", "SECURITY"]);
 
 function serializeRecord(record: LogRecord): string {
-  const base = `{"ts":"${record.ts}","lvl":"${record.lvl}","app":${JSON.stringify(record.app)}`;
-  const mod = record.mod ? `,"mod":${JSON.stringify(record.mod)}` : "";
-  const msg = `,"msg":${JSON.stringify(record.msg)}`;
-  const pid = `,"pid":${record.pid}`;
-  const trace = record.traceId ? `,"traceId":${JSON.stringify(record.traceId)}` : "";
-  const ctx = record.ctx ? `,"ctx":${JSON.stringify(record.ctx)}` : "";
-  return `${base}${mod}${msg}${pid}${trace}${ctx}}\n`;
+  return safeStringify(record) + "\n";
 }
 export class FileTransport implements Transport {
   private opts: ResolvedLoggerOptions;
@@ -107,6 +102,20 @@ export class FileTransport implements Transport {
 
   async flush(): Promise<void> {
     await this.enqueue(() => this.flushBuffer());
+  }
+
+  flushSync(): void {
+    if (this.buffer.length === 0) return;
+    const content = this.buffer.join("");
+    this.buffer = [];
+    this.bufferBytes = 0;
+    
+    // Attempt to write using fs.appendFileSync directly to ensure it gets written
+    try {
+      fs.appendFileSync(this.currentFilePath, content, "utf8");
+    } catch (err) {
+      // Ignore sync errors during crash
+    }
   }
 
   async close(): Promise<void> {

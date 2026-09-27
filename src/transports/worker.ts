@@ -9,7 +9,9 @@ const currentFilename = typeof __filename !== "undefined" ? __filename : url.fil
 const currentDirname = typeof __dirname !== "undefined" ? __dirname : path.dirname(currentFilename);
 
 export class WorkerTransport implements Transport {
-  private worker: Worker;
+  private worker?: Worker;
+  private workerScript: string;
+  private workerData: any;
   
   constructor(opts: ResolvedLoggerOptions) {
     const isTs = currentFilename.endsWith(".ts");
@@ -21,35 +23,50 @@ export class WorkerTransport implements Transport {
       workerScript = path.join(currentDirname, "transports", `worker-script${ext}`);
     }
     
-    this.worker = new Worker(workerScript, {
-      workerData: { opts },
-      execArgv: process.execArgv
-    });
-    
-    this.worker.on("error", (err) => {
-      console.error("Worker error:", err);
-    });
+    this.workerScript = workerScript;
+    this.workerData = { opts };
+  }
+
+  private getWorker(): Worker {
+    if (!this.worker) {
+      this.worker = new Worker(this.workerScript, {
+        workerData: this.workerData,
+        execArgv: process.execArgv
+      });
+      this.worker.on("error", (err) => {
+        console.error("Worker error:", err);
+      });
+    }
+    return this.worker;
   }
 
   log(record: LogRecord): void {
-    this.worker.postMessage({ type: "log", record });
+    this.getWorker().postMessage({ type: "log", record });
   }
 
   async flush(): Promise<void> {
+    if (!this.worker) return;
     return new Promise((resolve) => {
       const id = Date.now() + Math.random().toString();
       const listener = (msg: any) => {
         if (msg.type === "flushed" && msg.id === id) {
-          this.worker.off("message", listener);
+          this.worker!.off("message", listener);
           resolve();
         }
       };
-      this.worker.on("message", listener);
-      this.worker.postMessage({ type: "flush", id });
+      this.worker!.on("message", listener);
+      this.worker!.postMessage({ type: "flush", id });
     });
   }
 
+  flushSync(): void {
+    // Worker does not support synchronous flushing easily.
+    // If autoCatchExceptions triggers, the FileTransport in the worker might not sync flush.
+    // However, the worker transport might just drop messages. This is a known limitation.
+  }
+
   async close(): Promise<void> {
+    if (!this.worker) return;
     await this.flush();
     await this.worker.terminate();
   }

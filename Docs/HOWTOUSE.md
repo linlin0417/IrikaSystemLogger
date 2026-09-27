@@ -28,15 +28,15 @@ logger.info("系統已啟動", { port: 3000 });
 | `version` | `string` | **(必填)** | 應用程式版本。 |
 | `logDir` | `string` | `"./logs"` | 日誌儲存目錄。 |
 | `level` | `string` | `"INFO"` | 最低記錄層級，低於此層級的日誌將被忽略。 |
-| `timezone` | `string` | `"Asia/Taipei"` | 日誌時間時區 (需符合 Intl 格式)。 |
-| `pidMode` | `string` | `"independent"` | 執行模式，可選 `independent`, `ipc_worker` 等。 |
+| `timezone` | `string` | `"UTC+8"` | 日誌時間時區 (需符合 Intl 格式)。 |
+| `pidMode` | `string` | `"independent"` | 執行模式，可選 `independent`, `ipc_master`, `ipc_worker` 等。 |
 | `consoleIncludeContext`| `boolean` | `true` | 是否在終端機輸出 `ctx` (Context) 物件內容。 |
-| `maxFileSizeBytes` | `number` | `10 * 1024 * 1024` | 單一日誌檔最大大小 (Bytes)，預設 10MB。 |
-| `maxTotalSizeBytes`| `number` | `2 * 1024 ** 3` | 日誌目錄總大小限制 (Bytes)，預設 2GB。 |
+| `maxFileSizeBytes` | `number` | `3 * 1024 * 1024` | 單一日誌檔最大大小 (Bytes)，預設 3MB。 |
+| `maxTotalSizeBytes`| `number` | `800 * 1024 * 1024` | 日誌目錄總大小限制 (Bytes)，預設 800MB。 |
 | `maxFiles` | `number \| null`| `null` | 保留的最多的日誌檔案數量 (`null` 表示不限制)。 |
-| `maxFileAgeDays` | `number` | `30` | 檔案保留天數，超過將被清理。 |
-| `flushIntervalMs` | `number` | `2000` | 日誌批次寫入的定時器間隔 (毫秒)。 |
-| `batchSizeBytes` | `number` | `1024 * 1024` | 記憶體中日誌緩衝區達到此大小即強制寫入 (預設 1MB)。 |
+| `maxFileAgeDays` | `number` | `7` | 檔案保留天數，超過將被清理。 |
+| `flushIntervalMs` | `number` | `1000` | 日誌批次寫入的定時器間隔 (毫秒)。 |
+| `batchSizeBytes` | `number` | `4096` | 記憶體中日誌緩衝區達到此大小即強制寫入 (預設 4KB)。 |
 | `useWorkerThread` | `boolean` | `false` | 是否開啟 Worker Thread 將 I/O (檔案寫入) 卸載到背景。 |
 | `customLevels` | `Record<string, number>` | `{}` | 擴充或覆寫自定義日誌層級的優先度。 |
 | `consoleColorMap` | `Record<string, string>` | `(內建色彩)` | 覆寫終端機顯示的 ANSI 顏色。 |

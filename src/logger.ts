@@ -5,6 +5,7 @@ import { FileTransport } from "./transports/file";
 import { WorkerTransport } from "./transports/worker";
 import { IpcTransport } from "./transports/ipc";
 import { levelPriority, LogRecord, LogLevel, Transport } from "./types";
+import util from "util";
 
 export interface LoggerInitOptions {
   app: string;
@@ -12,7 +13,7 @@ export interface LoggerInitOptions {
   logDir?: string;
   level?: keyof typeof levelPriority;
   timezone?: string;
-  pidMode?: "independent" | "ipc_master";
+  pidMode?: "independent" | "ipc_master" | "ipc_worker";
   consoleIncludeContext?: boolean;
   maxFileSizeBytes?: number;
   maxTotalSizeBytes?: number;
@@ -21,6 +22,11 @@ export interface LoggerInitOptions {
   flushIntervalMs?: number;
   batchSizeBytes?: number;
   highWaterMark?: number;
+  customLevels?: Record<string, number>;
+  consoleColorMap?: Record<string, string>;
+  consoleFormatter?: (record: LogRecord) => string;
+  useWorkerThread?: boolean;
+  autoCatchExceptions?: boolean;
 }
 
 export class IrikaLogger {
@@ -130,6 +136,49 @@ export class IrikaLogger {
     this.emit("PERFORMANCE", msg, ctx, traceId);
   }
 
+  private originalConsole?: Console;
+
+  hijackGlobalConsole(): void {
+    if (this.originalConsole) return; // already hijacked
+    
+    this.originalConsole = { ...console };
+    
+    let isLogging = false;
+
+    const wrap = (level: "log" | "info" | "warn" | "error" | "debug") => {
+      return (...args: any[]) => {
+        if (isLogging) {
+          // Avoid infinite recursion if any transport calls console.log
+          if (this.originalConsole) this.originalConsole[level](...args);
+          return;
+        }
+        isLogging = true;
+        try {
+          const msg = util.format(...args);
+          // map console methods to logger methods
+          if (level === "log" || level === "info") this.info(msg, { console_args: args });
+          else if (level === "warn") this.warn(msg, { console_args: args });
+          else if (level === "error") this.error(msg, { console_args: args });
+          else if (level === "debug") this.debug(msg, { console_args: args });
+        } finally {
+          isLogging = false;
+        }
+      };
+    };
+
+    console.log = wrap("log");
+    console.info = wrap("info");
+    console.warn = wrap("warn");
+    console.error = wrap("error");
+    console.debug = wrap("debug");
+  }
+
+  restoreGlobalConsole(): void {
+    if (!this.originalConsole) return;
+    Object.assign(console, this.originalConsole);
+    this.originalConsole = undefined;
+  }
+
   child(moduleName: string): IrikaLogger {
     return new IrikaLogger({ app: this.opts.app, version: this.opts.version }, {
       transports: this.transports,
@@ -146,6 +195,14 @@ export class IrikaLogger {
     }
   }
 
+  flushSync(): void {
+    for (const t of this.transports) {
+      if (typeof t.flushSync === "function") {
+        t.flushSync();
+      }
+    }
+  }
+
   async close(): Promise<void> {
     for (const t of this.transports) {
       await t.close();
@@ -154,5 +211,15 @@ export class IrikaLogger {
 }
 
 export function createLogger(options: LoggerInitOptions): IrikaLogger {
-  return new IrikaLogger(options);
+  const logger = new IrikaLogger(options);
+  if (options.autoCatchExceptions) {
+    const handleCrash = (err: any, type: string) => {
+      logger.error(`[${type}] ${err instanceof Error ? err.stack : err}`, { err });
+      logger.flushSync();
+      process.exit(1);
+    };
+    process.on("uncaughtException", (err) => handleCrash(err, "uncaughtException"));
+    process.on("unhandledRejection", (err) => handleCrash(err, "unhandledRejection"));
+  }
+  return logger;
 }

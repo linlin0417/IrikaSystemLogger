@@ -45,17 +45,16 @@ export class IpcTransport implements Transport {
       type: "IRIKA_LOGGER_BATCH",
       app: this.opts.app,
       records: payload
-    }, (err) => {
-      if (err) {
-        // failed to send over IPC, silently drop or handle?
-        // for now, ignore to prevent crashes
-      }
     });
   }
 
   async flush(): Promise<void> {
     this.flushBuffer();
     return Promise.resolve();
+  }
+
+  flushSync(): void {
+    this.flushBuffer();
   }
 
   async close(): Promise<void> {

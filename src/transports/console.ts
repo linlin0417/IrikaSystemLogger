@@ -4,6 +4,8 @@ import { formatConsoleLine } from "../utils/console-format";
 import { ResolvedLoggerOptions } from "../utils/config";
 
 export class ConsoleTransport implements Transport {
+  private originalConsoleLog = console.log;
+
   constructor(private readonly opts: ResolvedLoggerOptions) {}
 
   log(record: LogRecord): void {
@@ -14,11 +16,15 @@ export class ConsoleTransport implements Transport {
       consoleFormatter: this.opts.consoleFormatter
     });
     // eslint-disable-next-line no-console
-    console.log(line);
+    this.originalConsoleLog(line);
   }
 
   async flush(): Promise<void> {
     return;
+  }
+
+  flushSync(): void {
+    // Console output is already synchronous
   }
 
   async close(): Promise<void> {

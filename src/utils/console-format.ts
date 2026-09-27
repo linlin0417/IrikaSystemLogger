@@ -1,5 +1,6 @@
 import { formatConsoleTimestamp } from "./time";
 import { LogRecord } from "../types";
+import { safeStringify } from "./safe-stringify";
 
 const ANSI = {
   reset: "\u001b[0m",
@@ -71,7 +72,7 @@ export function formatConsoleLine(record: LogRecord, opts: ConsoleFormatOptions)
   let ctxPart = "";
   if (opts.consoleIncludeContext !== false && record.ctx && Object.keys(record.ctx).length > 0) {
     try {
-      const ctxText = JSON.stringify(record.ctx);
+      const ctxText = safeStringify(record.ctx);
       ctxPart = " " + color(ctxText, ANSI.gray);
     } catch (err) {
       ctxPart = " " + color("[ctx_error]", ANSI.gray);

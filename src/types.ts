@@ -67,5 +67,6 @@ export interface BaseLoggerOptions {
 export interface Transport {
   log(record: LogRecord): void;
   flush(): Promise<void>;
+  flushSync(): void;
   close(): Promise<void>;
 }

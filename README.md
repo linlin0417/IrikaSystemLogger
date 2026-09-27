@@ -3,7 +3,7 @@
 高效的 JSON 行式 logger，內建檔案輪替、保存策略、批次寫入與串流讀取，適合多進程及長時間服務使用。
 
 ## Docs
-[How to use for Context7](Docs/HOWTOUSE.md) | [GUI Logger Viewer](docs/GUI.md) | [API Reference](Docs/API.md)
+[How to use for Context7](Docs/HOWTOUSE.md)
 
 ## 安裝
 
